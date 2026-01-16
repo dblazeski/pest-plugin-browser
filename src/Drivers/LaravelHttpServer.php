@@ -149,8 +149,9 @@ final class LaravelHttpServer implements HttpServer
         $this->start();
 
         $url = $this->url();
+        $mainUrl = config('app.url');
 
-        config(['app.url' => $url]);
+        config(['app.url' => $mainUrl ?: $url]);
 
         config(['cors.paths' => ['*']]);
 
