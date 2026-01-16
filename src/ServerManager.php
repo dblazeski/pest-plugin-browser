@@ -60,7 +60,7 @@ final class ServerManager
         }
 
         $port = Port::find();
-        $host = Playwright::host() ?? self::DEFAULT_HOST;
+        $host = self::DEFAULT_HOST;
 
         $this->playwright ??= PlaywrightNpmServer::create(
             PackageJsonDirectory::find(),
@@ -70,10 +70,7 @@ final class ServerManager
             'Listening on',
         );
 
-        AlreadyStartedPlaywrightServer::persist(
-            $host,
-            $port,
-        );
+        AlreadyStartedPlaywrightServer::persist($host, $port);
 
         return $this->playwright;
     }
