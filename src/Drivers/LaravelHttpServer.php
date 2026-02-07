@@ -85,7 +85,7 @@ final class LaravelHttpServer implements HttpServer
         $path = $parts['path'] ?? '/';
         parse_str($parts['query'] ?? '', $queryParameters);
 
-        return (string) Uri::of($this->url())
+        return (string) Uri::of($this->publicUrl())
             ->withPath($path)
             ->withQuery($queryParameters);
     }
@@ -148,10 +148,12 @@ final class LaravelHttpServer implements HttpServer
     {
         $this->start();
 
-        $url = $this->url();
+        $url = $this->publicUrl();
         $mainUrl = config('app.url');
 
-        config(['app.url' => $mainUrl ?: $url]);
+        $appUrl = is_string($mainUrl) && $mainUrl !== '' ? $mainUrl : $url;
+
+        config(['app.url' => $appUrl]);
 
         config(['cors.paths' => ['*']]);
 
@@ -195,15 +197,20 @@ final class LaravelHttpServer implements HttpServer
     }
 
     /**
-     * Get the public path for the given path.
+     * The URL that browser clients should navigate to.
+     *
+     * Even though the server binds to 127.0.0.1, we must expose a resolvable host
+     * so cookies and domain-based routing behave like production.
      */
-    private function url(): string
+    private function publicUrl(): string
     {
         if (! $this->socket instanceof AmpHttpServer) {
             throw new ServerNotFoundException('The HTTP server is not running.');
         }
 
-        return sprintf('http://%s:%d', $this->host, $this->port);
+        $host = Playwright::host();
+
+        return sprintf('http://%s:%d', $host ?? $this->host, $this->port);
     }
 
     /**
@@ -229,14 +236,50 @@ final class LaravelHttpServer implements HttpServer
         $path = in_array($uri->getPath(), ['', '0'], true) ? '/' : $uri->getPath();
         $query = $uri->getQuery() ?? ''; // @phpstan-ignore-line
         $fullPath = $path.($query !== '' ? '?'.$query : '');
-        $absoluteUrl = mb_rtrim($this->url(), '/').$fullPath;
+
+        $hostHeader = $request->getHeader('host');
+        $hostAndPort = $hostHeader;
+        $host = null;
+        $port = null;
+        if (is_string($hostHeader) && $hostHeader !== '') {
+            $parsed = parse_url('http://'.$hostHeader);
+            $host = is_string($parsed['host'] ?? null) ? $parsed['host'] : null;
+            $port = is_int($parsed['port'] ?? null) ? $parsed['port'] : null;
+        }
+
+        $host ??= $uri->getHost() !== '' ? $uri->getHost() : null;
+        $port ??= $uri->getPort();
+
+        $scheme = $uri->getScheme() !== '' ? $uri->getScheme() : 'http';
+        $host ??= $this->host;
+        $port ??= $this->port;
+        $hostAndPort ??= $host.':'.$port;
+
+        $absoluteUrl = $scheme.'://'.$hostAndPort.$fullPath;
+        $publicOrigin = $scheme.'://'.$host.':'.$port;
 
         $filepath = public_path($path);
         if (file_exists($filepath) && ! is_dir($filepath)) {
-            return $this->asset($filepath);
+            return $this->asset($filepath, $publicOrigin);
         }
 
         $kernel = app()->make(HttpKernel::class);
+
+        if (app()->bound('tenant')) {
+            // The app container is long-lived in browser tests; mimic real request
+            // lifecycle by forcing a fresh tenant resolution for every request.
+            app()->forgetInstance('tenant');
+        }
+
+        if (app()->bound('url')) {
+            $urlGenerator = app('url');
+
+            assert($urlGenerator instanceof UrlGenerator);
+
+            $urlGenerator->useOrigin($publicOrigin);
+            $urlGenerator->useAssetOrigin($publicOrigin);
+            $urlGenerator->forceScheme($scheme);
+        }
 
         $contentType = $request->getHeader('content-type') ?? '';
         $method = mb_strtoupper($request->getMethod());
@@ -262,22 +305,17 @@ final class LaravelHttpServer implements HttpServer
 
         $symfonyRequest->headers->add($request->getHeaders());
 
-        // Set the Host header to match the configured host for subdomain routing
-        $configuredHost = Playwright::host();
-        if ($configuredHost !== null) {
-            $hostHeader = sprintf('%s:%d', $configuredHost, $this->port);
-            $symfonyRequest->headers->set('Host', $hostHeader);
-            // Also set SERVER_NAME for Laravel routing
-            $symfonyRequest->server->set('SERVER_NAME', $configuredHost);
-            $symfonyRequest->server->set('HTTP_HOST', $hostHeader);
-        }
+        $symfonyRequest->headers->set('Host', $hostAndPort);
+        $symfonyRequest->server->set('SERVER_NAME', $host);
+        $symfonyRequest->server->set('SERVER_PORT', (string) $port);
+        $symfonyRequest->server->set('HTTP_HOST', $hostAndPort);
 
         $debug = config('app.debug');
 
         try {
             config(['app.debug' => false]);
 
-            $response = $kernel->handle($laravelRequest = Request::createFromBase($symfonyRequest));
+            $response = $kernel->handle($laravelRequest = LaravelBrowserRequest::createFromBase($symfonyRequest));
         } catch (Throwable $e) {
             $this->lastThrowable = $e;
 
@@ -316,7 +354,7 @@ final class LaravelHttpServer implements HttpServer
     /**
      * Return an asset response.
      */
-    private function asset(string $filepath): Response
+    private function asset(string $filepath, string $publicOrigin): Response
     {
         $file = fopen($filepath, 'r');
 
@@ -338,7 +376,7 @@ final class LaravelHttpServer implements HttpServer
 
             assert($temporaryContent !== false, 'Failed to open temporary stream.');
 
-            $content = $this->rewriteAssetUrl($temporaryContent);
+            $content = $this->rewriteAssetUrl($temporaryContent, $publicOrigin);
 
             fwrite($temporaryStream, $content);
 
@@ -355,12 +393,12 @@ final class LaravelHttpServer implements HttpServer
     /**
      * Rewrite the asset URL in the given content.
      */
-    private function rewriteAssetUrl(string $content): string
+    private function rewriteAssetUrl(string $content, string $publicOrigin): string
     {
         if ($this->originalAssetUrl === null) {
             return $content;
         }
 
-        return str_replace($this->originalAssetUrl, $this->url(), $content);
+        return str_replace($this->originalAssetUrl, $publicOrigin, $content);
     }
 }

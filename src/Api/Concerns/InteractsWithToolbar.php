@@ -29,7 +29,22 @@ trait InteractsWithToolbar
      */
     public function navigate(string $url, array $options = []): self
     {
-        $url = ComputeUrl::from($url);
+        if (str_starts_with($url, '/')) {
+            $currentUrl = $this->page->url();
+            $parts = parse_url($currentUrl);
+
+            $scheme = is_array($parts) ? ($parts['scheme'] ?? null) : null;
+            $host = is_array($parts) ? ($parts['host'] ?? null) : null;
+            $port = is_array($parts) ? ($parts['port'] ?? null) : null;
+
+            if (is_string($scheme) && $scheme !== '' && is_string($host) && $host !== '') {
+                $url = $scheme.'://'.$host.(is_int($port) ? ':'.$port : '').$url;
+            } else {
+                $url = ComputeUrl::from($url);
+            }
+        } else {
+            $url = ComputeUrl::from($url);
+        }
 
         $this->page->goto($url, $options);
 
