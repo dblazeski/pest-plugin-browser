@@ -17,6 +17,7 @@ use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Foundation\Testing\Concerns\WithoutExceptionHandlingHandler;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Redirector as LaravelRedirector;
 use Illuminate\Routing\UrlGenerator;
 use Illuminate\Support\Uri;
 use Pest\Browser\Contracts\HttpServer;
@@ -49,6 +50,11 @@ final class LaravelHttpServer implements HttpServer
      * The last throwable that occurred during the server's execution.
      */
     private ?Throwable $lastThrowable = null;
+
+    /**
+     * The original Laravel redirector instance (used to reset request state).
+     */
+    private ?LaravelRedirector $originalRedirector = null;
 
     /**
      * Creates a new laravel http server instance.
@@ -157,6 +163,14 @@ final class LaravelHttpServer implements HttpServer
 
         config(['cors.paths' => ['*']]);
 
+        if (app()->bound('redirect')) {
+            $redirector = app('redirect');
+
+            assert($redirector instanceof LaravelRedirector);
+
+            $this->originalRedirector = $redirector;
+        }
+
         if (app()->bound('url')) {
             $urlGenerator = app('url');
 
@@ -264,6 +278,12 @@ final class LaravelHttpServer implements HttpServer
         }
 
         $kernel = app()->make(HttpKernel::class);
+
+        if ($this->originalRedirector instanceof LaravelRedirector) {
+            // The Laravel app instance is long-lived in browser tests; reset the redirector
+            // to prevent Livewire's temporary redirector binding leaking between requests.
+            app()->instance('redirect', $this->originalRedirector);
+        }
 
         if (app()->bound('tenant')) {
             // The app container is long-lived in browser tests; mimic real request
