@@ -46,7 +46,16 @@ final class Selector
      */
     public static function getByAttributeTextSelector(string $attrName, string $text, bool $exact = false): string
     {
-        $attrName = self::escapeForAttributeName($attrName);
+        // Playwright's `internal:attr` selector engine can't handle attribute names
+        // with special characters (e.g. Livewire's `wire:name`, `wire:model.live.blur`).
+        // For those, fall back to plain CSS attribute selectors with escaped names.
+        if (preg_match('/[^a-zA-Z0-9_-]/', $attrName) === 1) {
+            $attrName = self::escapeForAttributeName($attrName);
+            $value = self::escapeForAttributeSelector($text, true);
+            $caseInsensitive = $exact ? '' : ' i';
+
+            return "[{$attrName}={$value}{$caseInsensitive}]";
+        }
 
         return 'internal:'."attr=[{$attrName}=".self::escapeForAttributeSelectorOrRegex($text, $exact).']';
     }
@@ -56,8 +65,6 @@ final class Selector
      */
     public static function getByTestIdSelector(string $testIdAttributeName, string $testId): string
     {
-        $testIdAttributeName = self::escapeForAttributeName($testIdAttributeName);
-
         return 'internal:'."testid=[{$testIdAttributeName}=".self::escapeForAttributeSelectorOrRegex($testId, true).']';
     }
 

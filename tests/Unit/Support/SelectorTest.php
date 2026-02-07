@@ -31,11 +31,11 @@ it('escapes backslashes in attribute values', function (): void {
 it('escapes special characters in attribute names', function (): void {
     $selector = Selector::getByAttributeTextSelector('wire:name', 'bukiraj.sign-up-page', true);
 
-    expect($selector)->toBe('internal:attr=[wire\\:name="bukiraj.sign-up-page"]');
+    expect($selector)->toBe('[wire\\:name="bukiraj.sign-up-page"]');
 
     $selector = Selector::getByAttributeTextSelector('wire:model.live.blur', 'organization.slug', true);
 
-    expect($selector)->toBe('internal:attr=[wire\\:model\\.live\\.blur="organization.slug"]');
+    expect($selector)->toBe('[wire\\:model\\.live\\.blur="organization.slug"]');
 });
 
 it('returns correct selector for test ID', function (): void {
