@@ -163,6 +163,13 @@ final class LaravelHttpServer implements HttpServer
 
         config(['cors.paths' => ['*']]);
 
+        // Browser tests may freeze time; use session cookies (no Expires) so the browser
+        // does not discard them as "expired" when the app clock is in the past.
+        config([
+            'session.expire_on_close' => true,
+            'session.secure' => false,
+        ]);
+
         if (app()->bound('redirect')) {
             $redirector = app('redirect');
 
