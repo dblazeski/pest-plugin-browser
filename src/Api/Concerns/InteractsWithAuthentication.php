@@ -147,6 +147,10 @@ trait InteractsWithAuthentication
             return response('OK', 200);
         })->middleware('web');
 
+        $whoAmIRoute = Route::get('/pest/browser/test-browser-testing', function (): ResponseFactory|Response {
+            return response((string) Auth::id(), 200);
+        })->middleware('web');
+
         $routes = $router->getRoutes();
         if ($routes instanceof RouteCollection) {
             // Prepend the auth routes so they are not shadowed by greedy app routes
@@ -154,9 +158,10 @@ trait InteractsWithAuthentication
             $newRoutes = new RouteCollection();
             $newRoutes->add($loginRoute);
             $newRoutes->add($logoutRoute);
+            $newRoutes->add($whoAmIRoute);
 
             foreach ($routes as $route) {
-                if ($route === $loginRoute || $route === $logoutRoute) {
+                if ($route === $loginRoute || $route === $logoutRoute || $route === $whoAmIRoute) {
                     continue;
                 }
 

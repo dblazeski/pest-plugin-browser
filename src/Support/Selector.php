@@ -46,6 +46,8 @@ final class Selector
      */
     public static function getByAttributeTextSelector(string $attrName, string $text, bool $exact = false): string
     {
+        $attrName = self::escapeForAttributeName($attrName);
+
         return 'internal:'."attr=[{$attrName}=".self::escapeForAttributeSelectorOrRegex($text, $exact).']';
     }
 
@@ -54,6 +56,8 @@ final class Selector
      */
     public static function getByTestIdSelector(string $testIdAttributeName, string $testId): string
     {
+        $testIdAttributeName = self::escapeForAttributeName($testIdAttributeName);
+
         return 'internal:'."testid=[{$testIdAttributeName}=".self::escapeForAttributeSelectorOrRegex($testId, true).']';
     }
 
@@ -139,6 +143,17 @@ final class Selector
 
         return "\"{$escapedText}\"i";
 
+    }
+
+    /**
+     * Escape attribute names for Playwright's selector parser.
+     *
+     * Livewire uses attribute names like "wire:name" and "wire:model.live.blur",
+     * which must be escaped when used in selectors.
+     */
+    private static function escapeForAttributeName(string $attrName): string
+    {
+        return preg_replace_callback('/[^a-zA-Z0-9_-]/', static fn (array $m): string => '\\'.$m[0], $attrName) ?? $attrName;
     }
 
     /**
