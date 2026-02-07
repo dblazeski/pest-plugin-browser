@@ -167,6 +167,9 @@ final class LaravelHttpServer implements HttpServer
         // does not discard them as "expired" when the app clock is in the past.
         config([
             'session.expire_on_close' => true,
+            // Host-only cookies are required for multi-tenant apps using subdomains.
+            // This prevents the session cookie from being shared across tenants.
+            'session.domain' => null,
             'session.secure' => false,
         ]);
 
@@ -315,7 +318,8 @@ final class LaravelHttpServer implements HttpServer
         if ($method !== 'GET' && str_starts_with(mb_strtolower($contentType), 'application/x-www-form-urlencoded')) {
             parse_str($rawBody, $parameters);
         }
-        $cookies = array_map(fn (RequestCookie $cookie): string => urldecode($cookie->getValue()), $request->getCookies());
+        // Cookie values are not query strings; avoid converting "+" to spaces.
+        $cookies = array_map(fn (RequestCookie $cookie): string => rawurldecode($cookie->getValue()), $request->getCookies());
         $cookies = array_merge($cookies, test()->prepareCookiesForRequest()); // @phpstan-ignore-line
         /** @var array<string, string> $serverVariables */
         $serverVariables = test()->serverVariables(); // @phpstan-ignore-line

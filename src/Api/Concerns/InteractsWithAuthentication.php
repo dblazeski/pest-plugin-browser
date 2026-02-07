@@ -8,6 +8,8 @@ use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Auth\StatefulGuard;
 use Illuminate\Contracts\Routing\ResponseFactory;
 use Illuminate\Http\Response;
+use Illuminate\Routing\RouteCollection;
+use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 use InvalidArgumentException;
@@ -39,15 +41,12 @@ trait InteractsWithAuthentication
 
         $userId = (string) $userId;
 
-        $currentUrl = $this->page->url();
-
         $loginUrl = '/pest/browser/login/'.$userId;
         if ($guard !== null && $guard !== '') {
             $loginUrl .= '/'.$guard;
         }
 
         $this->navigate($loginUrl);
-        $this->page->goto($currentUrl);
 
         return $this;
     }
@@ -70,15 +69,12 @@ trait InteractsWithAuthentication
     {
         $this->ensureAuthenticationRoutes();
 
-        $currentUrl = $this->page->url();
-
         $logoutUrl = '/pest/browser/logout';
         if ($guard !== null && $guard !== '') {
             $logoutUrl .= '/'.$guard;
         }
 
         $this->navigate($logoutUrl);
-        $this->page->goto($currentUrl);
 
         return $this;
     }
@@ -96,19 +92,23 @@ trait InteractsWithAuthentication
      */
     private function ensureAuthenticationRoutes(): void
     {
-        static $authenticationRoutesRegistered = false;
-
-        if ($authenticationRoutesRegistered) {
-            return;
-        }
+        static $routerObjectId = null;
 
         if (! function_exists('app_path')) {
-            $authenticationRoutesRegistered = true;
-
             return;
         }
 
-        Route::get('/pest/browser/login/{userId}/{guard?}', function (string $userId, ?string $guard = null): ResponseFactory|Response {
+        $router = app('router');
+        if (! $router instanceof Router) {
+            return;
+        }
+
+        $currentRouterObjectId = spl_object_id($router);
+        if ($routerObjectId === $currentRouterObjectId) {
+            return;
+        }
+
+        $loginRoute = Route::get('/pest/browser/login/{userId}/{guard?}', function (string $userId, ?string $guard = null): ResponseFactory|Response {
             $guard ??= config('auth.defaults.guard');
             $guard = is_string($guard) && $guard !== '' ? $guard : null;
 
@@ -123,12 +123,10 @@ trait InteractsWithAuthentication
                 Auth::loginUsingId((int) $userId);
             }
 
-            request()->session()->regenerate();
-
-            return response('', 204);
+            return response('OK', 200);
         })->middleware('web');
 
-        Route::get('/pest/browser/logout/{guard?}', function (?string $guard = null): ResponseFactory|Response {
+        $logoutRoute = Route::get('/pest/browser/logout/{guard?}', function (?string $guard = null): ResponseFactory|Response {
             $guard ??= config('auth.defaults.guard');
             $guard = is_string($guard) && $guard !== '' ? $guard : null;
 
@@ -146,9 +144,28 @@ trait InteractsWithAuthentication
             request()->session()->invalidate();
             request()->session()->regenerateToken();
 
-            return response('', 204);
+            return response('OK', 200);
         })->middleware('web');
 
-        $authenticationRoutesRegistered = true;
+        $routes = $router->getRoutes();
+        if ($routes instanceof RouteCollection) {
+            // Prepend the auth routes so they are not shadowed by greedy app routes
+            // (e.g. `{service_slug}` with `.*` in multi-tenant apps).
+            $newRoutes = new RouteCollection();
+            $newRoutes->add($loginRoute);
+            $newRoutes->add($logoutRoute);
+
+            foreach ($routes as $route) {
+                if ($route === $loginRoute || $route === $logoutRoute) {
+                    continue;
+                }
+
+                $newRoutes->add($route);
+            }
+
+            $router->setRoutes($newRoutes);
+        }
+
+        $routerObjectId = $currentRouterObjectId;
     }
 }
