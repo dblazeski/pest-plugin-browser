@@ -5,13 +5,9 @@ declare(strict_types=1);
 namespace Pest\Browser\Api\Concerns;
 
 use Illuminate\Contracts\Auth\Authenticatable;
-use Illuminate\Contracts\Auth\StatefulGuard;
-use Illuminate\Contracts\Routing\ResponseFactory;
-use Illuminate\Http\Response;
+use Illuminate\Routing\Route;
 use Illuminate\Routing\RouteCollection;
 use Illuminate\Routing\Router;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Route;
 use InvalidArgumentException;
 use RuntimeException;
 
@@ -98,6 +94,10 @@ trait InteractsWithAuthentication
             return;
         }
 
+        if (function_exists('app') && app()->environment('testing') === false) {
+            throw new RuntimeException('Pest browser authentication routes are only available in the testing environment.');
+        }
+
         $router = app('router');
         if (! $router instanceof Router) {
             return;
@@ -108,48 +108,27 @@ trait InteractsWithAuthentication
             return;
         }
 
-        $loginRoute = Route::get('/pest/browser/login/{userId}/{guard?}', function (string $userId, ?string $guard = null): ResponseFactory|Response {
-            $guard ??= config('auth.defaults.guard');
-            $guard = is_string($guard) && $guard !== '' ? $guard : null;
+        $routesFile = __DIR__.'/../../../routes/testing.php';
+        if (! is_file($routesFile)) {
+            throw new RuntimeException('Unable to locate the Pest browser testing routes file.');
+        }
 
-            if ($guard !== null) {
-                $statefulGuard = Auth::guard($guard);
-                if (! $statefulGuard instanceof StatefulGuard) {
-                    throw new RuntimeException('The configured auth guard does not support stateful authentication.');
-                }
+        $routes = require $routesFile;
+        if (! is_array($routes) || count($routes) !== 3) {
+            throw new RuntimeException('The Pest browser testing routes file must return the expected route definitions.');
+        }
 
-                $statefulGuard->loginUsingId((int) $userId);
-            } else {
-                Auth::loginUsingId((int) $userId);
-            }
+        [$loginRoute, $logoutRoute, $whoAmIRoute] = $routes;
 
-            return response('OK', 200);
-        })->middleware('web');
-
-        $logoutRoute = Route::get('/pest/browser/logout/{guard?}', function (?string $guard = null): ResponseFactory|Response {
-            $guard ??= config('auth.defaults.guard');
-            $guard = is_string($guard) && $guard !== '' ? $guard : null;
-
-            if ($guard !== null) {
-                $statefulGuard = Auth::guard($guard);
-                if (! $statefulGuard instanceof StatefulGuard) {
-                    throw new RuntimeException('The configured auth guard does not support stateful authentication.');
-                }
-
-                $statefulGuard->logout();
-            } else {
-                Auth::logout();
-            }
-
-            request()->session()->invalidate();
-            request()->session()->regenerateToken();
-
-            return response('OK', 200);
-        })->middleware('web');
-
-        $whoAmIRoute = Route::get('/pest/browser/test-browser-testing', function (): ResponseFactory|Response {
-            return response((string) Auth::id(), 200);
-        })->middleware('web');
+        if (! $loginRoute instanceof Route) {
+            throw new RuntimeException('The Pest browser testing routes file must return Illuminate\\Routing\\Route instances.');
+        }
+        if (! $logoutRoute instanceof Route) {
+            throw new RuntimeException('The Pest browser testing routes file must return Illuminate\\Routing\\Route instances.');
+        }
+        if (! $whoAmIRoute instanceof Route) {
+            throw new RuntimeException('The Pest browser testing routes file must return Illuminate\\Routing\\Route instances.');
+        }
 
         $routes = $router->getRoutes();
         if ($routes instanceof RouteCollection) {
@@ -160,8 +139,15 @@ trait InteractsWithAuthentication
             $newRoutes->add($logoutRoute);
             $newRoutes->add($whoAmIRoute);
 
+            /** @var Route $route */
             foreach ($routes as $route) {
-                if ($route === $loginRoute || $route === $logoutRoute || $route === $whoAmIRoute) {
+                if ($route === $loginRoute) {
+                    continue;
+                }
+                if ($route === $logoutRoute) {
+                    continue;
+                }
+                if ($route === $whoAmIRoute) {
                     continue;
                 }
 

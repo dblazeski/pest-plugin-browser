@@ -10,6 +10,10 @@ beforeEach(function (): void {
     Playwright::setHost(null);
 });
 
+afterEach(function (): void {
+    Playwright::setHost(null);
+});
+
 it('can set host via configuration', function (): void {
     $config = new Configuration();
 

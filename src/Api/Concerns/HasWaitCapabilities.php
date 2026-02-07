@@ -20,4 +20,12 @@ trait HasWaitCapabilities
 
         return $this;
     }
+
+    /**
+     * Waits for the "domcontentloaded" load state.
+     */
+    public function waitDomLoaded(): self
+    {
+        return $this->waitForEvent('domcontentloaded');
+    }
 }

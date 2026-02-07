@@ -34,5 +34,6 @@ Available helpers:
 Under the hood, this uses internal test-only routes (registered at runtime) to set the session cookie for the current browser context:
 - `GET /pest/browser/login/{userId}/{guard?}`
 - `GET /pest/browser/logout/{guard?}`
+- `GET /pest/browser/test-browser-testing` (returns current authenticated user id)
 
 Pest is an open-sourced software licensed under the **[MIT license](https://opensource.org/licenses/MIT)**.

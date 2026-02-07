@@ -52,6 +52,18 @@ trait InteractsWithToolbar
     }
 
     /**
+     * Navigates to the given URL, waiting until "domcontentloaded".
+     *
+     * @param  array<string, mixed>  $options
+     */
+    public function navigateDomLoaded(string $url, array $options = []): self
+    {
+        $options['waitUntil'] = 'domcontentloaded';
+
+        return $this->navigate($url, $options);
+    }
+
+    /**
      * Navigates to the next page in the history.
      */
     public function forward(): self

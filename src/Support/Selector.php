@@ -149,18 +149,6 @@ final class Selector
         }
 
         return "\"{$escapedText}\"i";
-
-    }
-
-    /**
-     * Escape attribute names for Playwright's selector parser.
-     *
-     * Livewire uses attribute names like "wire:name" and "wire:model.live.blur",
-     * which must be escaped when used in selectors.
-     */
-    private static function escapeForAttributeName(string $attrName): string
-    {
-        return preg_replace_callback('/[^a-zA-Z0-9_-]/', static fn (array $m): string => '\\'.$m[0], $attrName) ?? $attrName;
     }
 
     /**
@@ -204,5 +192,16 @@ final class Selector
         }
 
         return 'internal:'."role={$role}{$propsStr}";
+    }
+
+    /**
+     * Escape attribute names for Playwright's selector parser.
+     *
+     * Livewire uses attribute names like "wire:name" and "wire:model.live.blur",
+     * which must be escaped when used in selectors.
+     */
+    private static function escapeForAttributeName(string $attrName): string
+    {
+        return preg_replace_callback('/[^a-zA-Z0-9_-]/', static fn (array $m): string => '\\'.$m[0], $attrName) ?? $attrName;
     }
 }
